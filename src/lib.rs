@@ -7,8 +7,8 @@ use curve25519_dalek::{
     scalar::Scalar,
     traits::IsIdentity,
 };
-use getrandom::getrandom;
 use hmac_sha512::{Hash, BLOCKBYTES};
+use rand_core::{CryptoRng, RngCore};
 
 pub const SESSION_ID_BYTES: usize = 16;
 pub const STEP1_PACKET_BYTES: usize = 16 + 32;
@@ -21,7 +21,7 @@ const DSI2: &str = "CPaceRistretto255-2";
 #[derive(Debug)]
 pub enum Error {
     Overflow(&'static str),
-    Random(getrandom::Error),
+    Random(rand_core::Error),
     InvalidPublicKey,
 }
 
@@ -31,8 +31,8 @@ impl fmt::Display for Error {
     }
 }
 
-impl From<getrandom::Error> for Error {
-    fn from(e: getrandom::Error) -> Self {
+impl From<rand_core::Error> for Error {
+    fn from(e: rand_core::Error) -> Self {
         Error::Random(e)
     }
 }
@@ -81,12 +81,24 @@ impl Step2Out {
 }
 
 impl CPace {
+    #[cfg(feature = "getrandom")]
     fn new<T: AsRef<[u8]>>(
         session_id: [u8; SESSION_ID_BYTES],
         password: &str,
         id_a: &str,
         id_b: &str,
         ad: Option<T>,
+    ) -> Result<Self, Error> {
+        Self::new_with_rng(session_id, password, id_a, id_b, ad, rand::rngs::OsRng)
+    }
+
+    fn new_with_rng<T: AsRef<[u8]>>(
+        session_id: [u8; SESSION_ID_BYTES],
+        password: &str,
+        id_a: &str,
+        id_b: &str,
+        ad: Option<T>,
+        mut rng: impl CryptoRng + RngCore,
     ) -> Result<Self, Error> {
         if id_a.len() > 0xff || id_b.len() > 0xff {
             return Err(Error::Overflow(
@@ -108,7 +120,7 @@ impl CPace {
         let h = st.finalize();
         let mut p = RistrettoPoint::from_uniform_bytes(&h);
         let mut r = [0u8; 64];
-        getrandom(&mut r)?;
+        rng.try_fill_bytes(&mut r[..])?;
         let r = Scalar::from_bytes_mod_order_wide(&r);
         p *= r;
         Ok(CPace { session_id, p, r })
@@ -136,21 +148,33 @@ impl CPace {
         Ok(SharedKeys { k1, k2 })
     }
 
+    #[cfg(feature = "getrandom")]
     pub fn step1<T: AsRef<[u8]>>(
         password: &str,
         id_a: &str,
         id_b: &str,
         ad: Option<T>,
     ) -> Result<Step1Out, Error> {
+        Self::step1_with_rng(password, id_a, id_b, ad, rand::rngs::OsRng)
+    }
+
+    pub fn step1_with_rng<T: AsRef<[u8]>>(
+        password: &str,
+        id_a: &str,
+        id_b: &str,
+        ad: Option<T>,
+        mut rng: impl CryptoRng + RngCore,
+    ) -> Result<Step1Out, Error> {
         let mut session_id = [0u8; SESSION_ID_BYTES];
-        getrandom(&mut session_id)?;
-        let ctx = CPace::new(session_id, password, id_a, id_b, ad)?;
+        rng.try_fill_bytes(&mut session_id)?;
+        let ctx = CPace::new_with_rng(session_id, password, id_a, id_b, ad, rng)?;
         let mut step1_packet = [0u8; STEP1_PACKET_BYTES];
         step1_packet[..SESSION_ID_BYTES].copy_from_slice(&ctx.session_id);
         step1_packet[SESSION_ID_BYTES..].copy_from_slice(ctx.p.compress().as_bytes());
         Ok(Step1Out { ctx, step1_packet })
     }
 
+    #[cfg(feature = "getrandom")]
     pub fn step2<T: AsRef<[u8]>>(
         step1_packet: &[u8; STEP1_PACKET_BYTES],
         password: &str,
@@ -158,10 +182,21 @@ impl CPace {
         id_b: &str,
         ad: Option<T>,
     ) -> Result<Step2Out, Error> {
+        Self::step2_with_rng(step1_packet, password, id_a, id_b, ad, rand::rngs::OsRng)
+    }
+
+    pub fn step2_with_rng<T: AsRef<[u8]>>(
+        step1_packet: &[u8; STEP1_PACKET_BYTES],
+        password: &str,
+        id_a: &str,
+        id_b: &str,
+        ad: Option<T>,
+        rng: impl CryptoRng + RngCore,
+    ) -> Result<Step2Out, Error> {
         let mut session_id = [0u8; SESSION_ID_BYTES];
         session_id.copy_from_slice(&step1_packet[..SESSION_ID_BYTES]);
         let ya = &step1_packet[SESSION_ID_BYTES..];
-        let ctx = CPace::new(session_id, password, id_a, id_b, ad)?;
+        let ctx = CPace::new_with_rng(session_id, password, id_a, id_b, ad, rng)?;
         let mut step2_packet = [0u8; STEP2_PACKET_BYTES];
         step2_packet.copy_from_slice(ctx.p.compress().as_bytes());
         let ya = CompressedRistretto::from_slice(ya)
@@ -184,14 +219,29 @@ impl CPace {
     }
 }
 
-#[test]
-fn test_cpace() {
-    let client = CPace::step1("password", "client", "server", Some("ad")).unwrap();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::OsRng;
 
-    let step2 = CPace::step2(&client.packet(), "password", "client", "server", Some("ad")).unwrap();
+    #[test]
+    fn test_cpace() {
+        let client =
+            CPace::step1_with_rng("password", "client", "server", Some("ad"), OsRng).unwrap();
 
-    let shared_keys = client.step3(&step2.packet()).unwrap();
+        let step2 = CPace::step2_with_rng(
+            &client.packet(),
+            "password",
+            "client",
+            "server",
+            Some("ad"),
+            OsRng,
+        )
+        .unwrap();
 
-    assert_eq!(shared_keys.k1, step2.shared_keys.k1);
-    assert_eq!(shared_keys.k2, step2.shared_keys.k2);
+        let shared_keys = client.step3(&step2.packet()).unwrap();
+
+        assert_eq!(shared_keys.k1, step2.shared_keys.k1);
+        assert_eq!(shared_keys.k2, step2.shared_keys.k2);
+    }
 }
