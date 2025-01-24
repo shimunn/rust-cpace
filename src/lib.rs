@@ -27,7 +27,7 @@
 //!
 //! ## Example Usage
 //! ```rust
-//! use pake_cpace::*;
+//! use pake_cpace_embedded::*;
 //! use rand::rngs::OsRng;
 //!
 //! let initiating_party = CPace::step1_with_rng("password", "initiating_party", "responder", Some("ad"), OsRng).unwrap();

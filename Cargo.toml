@@ -1,18 +1,17 @@
 [package]
-name = "pake-cpace"
+name = "pake-cpace-embedded"
 version = "0.2.0"
-authors = ["Frank Denis <github@pureftpd.org>"]
+authors = ["shimun <shimun@shimmun.net>", "Frank Denis <github@pureftpd.org>"]
 edition = "2018"
 description = "A simple implementation of CPace, a balanced PAKE."
 keywords = ["cpace", "crypto", "pake"]
-repository = "https://github.com/jedisct1/rust-cpace"
-homepage = "https://github.com/jedisct1/rust-cpace"
+repository = "https://github.com/shimunn/rust-cpace"
+homepage = "https://github.com/shimunn/rust-cpace"
 categories = ["algorithms", "cryptography", "no-std"]
 license = "ISC"
 readme = "README.md"
 
 [features]
-default = ["getrandom"]
 getrandom = ["dep:getrandom", "dep:rand", "rand/getrandom"]
 
 [target.'cfg(all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown"))'.dependencies]

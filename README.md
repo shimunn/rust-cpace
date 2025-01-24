@@ -21,7 +21,7 @@ The CPace protocol requires a single round trip.
 It returns a set of two 256-bit (`SHARED_KEY_BYTES` bytes) keys that can be used to communicate in both directions.
 
 ```rust
-use pake_cpace::CPace;
+use pake_cpace_embedded::CPace;
 
 // client-side
 let client = CPace::step1("password", "client", "server", Some("ad")).unwrap();
