@@ -143,9 +143,9 @@ impl CPace {
     #[cfg(feature = "getrandom")]
     fn new<T: AsRef<[u8]>>(
         session_id: [u8; SESSION_ID_BYTES],
-        password: &str,
-        id_a: &str,
-        id_b: &str,
+        password: impl AsRef<[u8]>,
+        id_a: impl AsRef<[u8]>,
+        id_b: impl AsRef<[u8]>,
         ad: Option<T>,
     ) -> Result<Self, Error> {
         Self::new_with_rng(session_id, password, id_a, id_b, ad, rand::rngs::OsRng)
@@ -154,27 +154,30 @@ impl CPace {
     /// Creates a new CPace context using a specified random number generator.
     fn new_with_rng<T: AsRef<[u8]>>(
         session_id: [u8; SESSION_ID_BYTES],
-        password: &str,
-        id_a: &str,
-        id_b: &str,
+        password: impl AsRef<[u8]>,
+        id_a: impl AsRef<[u8]>,
+        id_b: impl AsRef<[u8]>,
         ad: Option<T>,
         mut rng: impl CryptoRng + RngCore,
     ) -> Result<Self, Error> {
-        if id_a.len() > 0xff || id_b.len() > 0xff {
+        if id_a.as_ref().len() > 0xff || id_b.as_ref().len() > 0xff {
             return Err(Error::Overflow(
                 "Identifiers must be at most 255 bytes long",
             ));
         }
         let zpad = [0u8; BLOCKBYTES];
-        let pad_len = zpad.len().wrapping_sub(DSI1.len() + password.len()) & (zpad.len() - 1);
+        let pad_len = zpad
+            .len()
+            .wrapping_sub(DSI1.len() + password.as_ref().len())
+            & (zpad.len() - 1);
         let mut st = Hash::new();
         st.update(DSI1);
         st.update(password);
         st.update(&zpad[..pad_len]);
         st.update(session_id);
-        st.update([id_a.len() as u8]);
+        st.update([id_a.as_ref().len() as u8]);
         st.update(id_a);
-        st.update([id_b.len() as u8]);
+        st.update([id_b.as_ref().len() as u8]);
         st.update(id_b);
         st.update(ad.as_ref().map(|ad| ad.as_ref()).unwrap_or_default());
         let h = st.finalize();
@@ -212,9 +215,9 @@ impl CPace {
     /// s. [`step1_with_rng`]
     #[cfg(feature = "getrandom")]
     pub fn step1<T: AsRef<[u8]>>(
-        password: &str,
-        id_a: &str,
-        id_b: &str,
+        password: impl AsRef<[u8]>,
+        id_a: impl AsRef<[u8]>,
+        id_b: impl AsRef<[u8]>,
         ad: Option<T>,
     ) -> Result<Step1Out, Error> {
         Self::step1_with_rng(password, id_a, id_b, ad, rand::rngs::OsRng)
@@ -250,9 +253,9 @@ impl CPace {
     /// * `Ok(Step1Out)`: Contains the CPace context and the `step1_packet`.
     /// * `Err(Error)`: If an error occurs during random number generation or context creation.
     pub fn step1_with_rng<T: AsRef<[u8]>>(
-        password: &str,
-        id_a: &str,
-        id_b: &str,
+        password: impl AsRef<[u8]>,
+        id_a: impl AsRef<[u8]>,
+        id_b: impl AsRef<[u8]>,
         ad: Option<T>,
         mut rng: impl CryptoRng + RngCore,
     ) -> Result<Step1Out, Error> {
@@ -269,9 +272,9 @@ impl CPace {
     #[cfg(feature = "getrandom")]
     pub fn step2<T: AsRef<[u8]>>(
         step1_packet: &[u8; STEP1_PACKET_BYTES],
-        password: &str,
-        id_a: &str,
-        id_b: &str,
+        password: impl AsRef<[u8]>,
+        id_a: impl AsRef<[u8]>,
+        id_b: impl AsRef<[u8]>,
         ad: Option<T>,
     ) -> Result<Step2Out, Error> {
         Self::step2_with_rng(step1_packet, password, id_a, id_b, ad, rand::rngs::OsRng)
@@ -308,9 +311,9 @@ impl CPace {
     /// * `Err(Error)`: If an error occurs during packet processing, context creation, or key derivation.
     pub fn step2_with_rng<T: AsRef<[u8]>>(
         step1_packet: &[u8; STEP1_PACKET_BYTES],
-        password: &str,
-        id_a: &str,
-        id_b: &str,
+        password: impl AsRef<[u8]>,
+        id_a: impl AsRef<[u8]>,
+        id_b: impl AsRef<[u8]>,
         ad: Option<T>,
         rng: impl CryptoRng + RngCore,
     ) -> Result<Step2Out, Error> {
